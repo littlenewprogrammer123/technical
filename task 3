@@ -1,0 +1,140 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+use App\Models\User;
+use App\Models\Product;
+use App\Models\Order;
+use App\Models\OrderItem;
+use Illuminate\Support\Facades\DB;
+
+Route::prefix('admin')->name('admin.')->middleware('auth', 'role:admin')->group(function () {
+    
+    // 1. Create the database schema for the e-commerce system
+
+    Route::get('ecommerce-schema', function () {
+        // Database schema creation for an e-commerce system
+        Schema::create('users', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('email')->unique();
+            $table->string('password');
+            $table->enum('role', ['admin', 'user'])->default('user');
+            $table->timestamps();
+        });
+
+        Schema::create('products', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->text('description');
+            $table->decimal('price', 10, 2);
+            $table->integer('stock');
+            $table->timestamps();
+        });
+
+        Schema::create('orders', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->decimal('total_price', 10, 2);
+            $table->enum('status', ['pending', 'completed', 'cancelled'])->default('pending');
+            $table->timestamps();
+        });
+
+        Schema::create('order_items', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('order_id')->constrained()->onDelete('cascade');
+            $table->foreignId('product_id')->constrained()->onDelete('cascade');
+            $table->integer('quantity');
+            $table->decimal('price', 10, 2);
+            $table->timestamps();
+        });
+
+        return "Schema Created for Users, Products, Orders, and Order Items";
+    });
+
+    // 2. Write the necessary MySQL queries:
+
+    // Query 1: Fetching all products with more than 10 stock
+    Route::get('products-in-stock', function () {
+        $products = DB::table('products')
+            ->where('stock', '>', 10)
+            ->get();
+
+        return response()->json($products);
+    });
+
+    // Query 2: Fetching all orders placed by a specific user (e.g., user with ID 1)
+    Route::get('user-orders/{userId}', function ($userId) {
+        $orders = Order::where('user_id', $userId)->get();
+
+        return response()->json($orders);
+    });
+
+    // Query 3: Updating product stock after an order is placed
+    Route::post('update-product-stock', function (Request $request) {
+        // Assuming you already have the order items data
+        $orderItems = $request->input('order_items'); // Array of order items with product_id and quantity
+        
+        foreach ($orderItems as $item) {
+            $product = Product::find($item['product_id']);
+            if ($product) {
+                $product->stock -= $item['quantity'];
+                $product->save();
+            }
+        }
+
+        return response()->json(['message' => 'Product stock updated successfully']);
+    });
+
+    // BONUS: Implement Eloquent relationships
+
+    // 1. User - has many Orders
+    class User extends \Illuminate\Database\Eloquent\Model
+    {
+        public function orders()
+        {
+            return $this->hasMany(Order::class);
+        }
+    }
+
+    // 2. Order - belongs to a User, has many Order Items
+    class Order extends \Illuminate\Database\Eloquent\Model
+    {
+        public function user()
+        {
+            return $this->belongsTo(User::class);
+        }
+
+        public function orderItems()
+        {
+            return $this->hasMany(OrderItem::class);
+        }
+    }
+
+    // 3. Product - has many Order Items
+    class Product extends \Illuminate\Database\Eloquent\Model
+    {
+        public function orderItems()
+        {
+            return $this->hasMany(OrderItem::class);
+        }
+    }
+
+    // 4. OrderItem - belongs to Order and Product
+    class OrderItem extends \Illuminate\Database\Eloquent\Model
+    {
+        public function order()
+        {
+            return $this->belongsTo(Order::class);
+        }
+
+        public function product()
+        {
+            return $this->belongsTo(Product::class);
+        }
+    }
+});
+
+?>
+
