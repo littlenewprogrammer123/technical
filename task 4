@@ -1,0 +1,97 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use App\Models\User as AppUser;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Artisan;
+
+// Route for displaying users
+Route::get('admin/users/api', function () {
+    // Fetch data from the external API
+    try {
+        $response = Http::get('https://jsonplaceholder.typicode.com/users');
+
+        if ($response->successful()) {
+            $users = $response->json();  // Get the users data as an array
+
+            // Store data in the database
+            foreach ($users as $user) {
+                AppUser::updateOrCreate(
+                    ['email' => $user['email']], // Unique identifier to avoid duplicate entries
+                    [
+                        'name' => $user['name'],
+                        'email' => $user['email'],
+                        'address' => $user['address']['street'] . ', ' . $user['address']['city'], // Storing address
+                    ]
+                );
+            }
+
+            return view('admin.users.index', compact('users'));
+        } else {
+            return response()->json(['error' => 'API Request failed'], 500);
+        }
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Error occurred while fetching API data'], 500);
+    }
+});
+
+// Route for displaying users with search functionality
+Route::get('admin/users/search', function (Request $request) {
+    $searchTerm = $request->input('search', '');
+
+    // Fetch users from the database with search functionality
+    $users = AppUser::where('name', 'like', '%' . $searchTerm . '%')->get();
+
+    return view('admin.users.index', compact('users'));
+});
+
+// Route for storing API data periodically using Laravel Scheduler (Bonus)
+Route::get('admin/users/scheduler', function () {
+    // Create a scheduler command that runs every hour
+    Artisan::call('schedule:run');
+    return "Scheduler triggered successfully!";
+});
+
+// Blade view for displaying users
+Route::view('admin/users/index', 'admin.users.index');
+
+// Create the User model
+use Illuminate\Database\Eloquent\Model;
+
+class User extends Model
+{
+    protected $fillable = ['name', 'email', 'address'];
+    protected $table = 'users';
+}
+
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API User Integration</title>
+</head>
+<body>
+    <h1>User List</h1>
+    
+    <!-- Search Form -->
+    <form method="GET" action="{{ url('admin/users/search') }}">
+        <input type="text" name="search" placeholder="Search by name" value="{{ request('search') }}">
+        <button type="submit">Search</button>
+    </form>
+    
+    <ul>
+        @foreach($users as $user)
+            <li>
+                <strong>Name:</strong> {{ $user['name'] }} <br>
+                <strong>Email:</strong> {{ $user['email'] }} <br>
+                <strong>Address:</strong> {{ $user['address'] }} <br>
+            </li>
+        @endforeach
+    </ul>
+</body>
+</html>
